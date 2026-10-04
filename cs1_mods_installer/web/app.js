@@ -504,11 +504,33 @@ $('#q').addEventListener('input', (e) => {
     return loadBrowse(S.page);
   }
   searchTimer = setTimeout(() => {
-    const m = v.match(/(?:https?:\/\/)?smods\.ru\/archives\/(\d+)/);
-    if (m) { openModal(`https://smods.ru/archives/${m[1]}`); return; }
+    const sm = v.match(/(?:https?:\/\/)?smods\.ru\/archives\/(\d+)/);
+    if (sm) { openModal(`https://smods.ru/archives/${sm[1]}`); return; }
+    const st = v.match(/steamcommunity\.com\/(?:sharedfiles|workshop)\/filedetails\/\?id=(\d+)/);
+    if (st) { resolveSteam(st[1]); return; }
+    if (/^\d{9,12}$/.test(v)) { resolveSteam(v); return; }
     doSearch(v);
   }, 420);
 });
+
+async function resolveSteam(wid) {
+  $('#qClear').hidden = false;
+  $('#qSteam').hidden = false;
+  try {
+    const d = await api(`/api/resolve_steam?wid=${encodeURIComponent(wid)}`);
+    if (d.resolved === 'smods' && d.card?.url) { openModal(d.card.url); return; }
+    if (d.resolved === 'steam' && d.card) {
+      const steamUrl = `https://steamcommunity.com/sharedfiles/filedetails/?id=${encodeURIComponent(wid)}`;
+      banner(`<b>${esc(d.card.title)}</b> existe en Steam pero aún no está en tu índice local.`
+        + ` <a href="${steamUrl}" target="_blank" rel="noopener">Ver en Steam</a>`
+        + ` · amplía el índice (pestaña Índice) para instalarlo desde aquí.`, '');
+      return;
+    }
+    banner(`Ese ID no existe en el Workshop. Revisa el número.`, 'err');
+  } catch (e) {
+    banner(`No se pudo resolver en Steam: ${esc(e.message)}`, 'err');
+  }
+}
 $('#qClear').addEventListener('click', () => {
   $('#q').value = ''; $('#q').focus(); $('#q').dispatchEvent(new Event('input'));
 });

@@ -298,33 +298,8 @@ def search_online(
     ids = [r["workshop_id"] for r in results]
     meta = steam.fetch(ids) if ids else {}
 
-    idx = index.load()
-    smods_by_title: dict[str, str] = {}
-    for e in idx.entries:
-        t = index._norm(e.get("title", ""))
-        if t and t not in smods_by_title:
-            smods_by_title[t] = e["url"]
-
-    def smods_url_for(steam_title: str) -> tuple[str, bool]:
-        """Devuelve (url de smods, es_exacta).
-
-        Exacta = títulos normalizados idénticos: se confía sin más.
-        Contenida = el título de smods aparece dentro del de Steam (que
-        suele llevar sufijos de versión): hay que verificarla por ID.
-        Sin esto, títulos cortos como "4×1" casan con cualquier cosa.
-        """
-        st = index._norm(steam_title)
-        if not st:
-            return "", False
-        if st in smods_by_title:
-            return smods_by_title[st], True
-        best, found = "", ""
-        for t, url in smods_by_title.items():
-            if len(t) >= 10 and t in st and len(t) > len(best):
-                best, found = t, url
-        return (found, False) if best else ("", False)
-
-    candidates = [(r, *smods_url_for(r["title"])) for r in results]
+    by_title = _smods_title_map()
+    candidates = [(r, *_smods_url_for(r["title"], by_title)) for r in results]
     # verificación por ID de los matches no exactos: la ficha de smods
     # trae el workshop_id y tiene que coincidir con el de Steam
     to_check = [url for (_, url, exact) in candidates if url and not exact]
@@ -333,11 +308,7 @@ def search_online(
         for url, d in fetch_details(to_check).items():
             checked[url] = d.workshop_id or ""
 
-    installed_map: dict[str, installer.Installed] = {}
-    if game:
-        for i in installer.list_installed(game):
-            if i.workshop_id:
-                installed_map[i.workshop_id] = i
+    installed_map = _installed_map(game)
 
     cards: list[Card] = []
     used_urls: set[str] = set()
@@ -374,13 +345,107 @@ def search_online(
     return cards
 
 
+def resolve_workshop(wid: str, game: GameInstall | None = None) -> dict[str, Any]:
+    """Resuelve un workshop ID a ficha instalable o a ficha de Steam.
+
+    Devuelve {"resolved": "smods"|"steam"|"unknown", "card": {...}|None}.
+    "smods" trae url lista para abrir/instalar; "steam" trae metadata del
+    Workshop pero aún sin página indexada; "unknown" ni existe en Steam.
+    """
+    wid = (wid or "").strip()
+    if not wid.isdigit():
+        return {"resolved": "unknown", "card": None}
+    info = steam.fetch([wid]).get(wid)
+    if not info:
+        return {"resolved": "unknown", "card": None}
+
+    url, exact = _smods_url_for(info.title or "", _smods_title_map())
+    if url and not exact:
+        d = fetch_details([url]).get(url)
+        if not d or (d.workshop_id or "") != wid:
+            url = ""
+
+    inst = _installed_map(game).get(wid)
+    card = Card(
+        url=url,
+        title=info.title or wid,
+        kind=info.kind if info else "unknown",
+        workshop_id=wid,
+        size=info.file_size if info else 0,
+        size_text=steam.human_size(info.file_size) if info and info.file_size else "",
+        author="",
+        revision="",
+        preview_url=info.preview_url if info else "",
+        compat=info.compat if info else "",
+        compat_status=steam.compat_status(info, game.version if game else ""),
+        tags=info.tags if info else [],
+        installed=inst is not None,
+        enabled=inst.enabled if inst else True,
+        managed=inst.managed if inst else False,
+        partial=False,
+        steam_url=f"https://steamcommunity.com/sharedfiles/filedetails/?id={wid}",
+    )
+    return {"resolved": "smods" if url else "steam", "card": card.to_dict()}
+
+
 RE_SMODS_URL = re.compile(r"(?:https?://)?smods\.ru/archives/(\d+)")
+RE_STEAM_REF = re.compile(r"steamcommunity\.com/(?:sharedfiles|workshop)/filedetails/\?id=(\d+)")
 
 
 def clean_smods_url(query: str) -> str:
     """Si el texto es/pega un enlace de ficha, devuelve la URL canonica."""
     m = RE_SMODS_URL.search(query.strip())
     return f"https://smods.ru/archives/{m.group(1)}" if m else ""
+
+
+def clean_steam_ref(query: str) -> str:
+    """Si el texto es un enlace del Workshop o un ID, devuelve el ID."""
+    q = query.strip()
+    m = RE_STEAM_REF.search(q)
+    if m:
+        return m.group(1)
+    if re.fullmatch(r"\d{9,12}", q):
+        return q
+    return ""
+
+
+def _smods_title_map() -> dict[str, str]:
+    idx = index.load()
+    by_title: dict[str, str] = {}
+    for e in idx.entries:
+        t = index._norm(e.get("title", ""))
+        if t and t not in by_title:
+            by_title[t] = e["url"]
+    return by_title
+
+
+def _smods_url_for(steam_title: str, by_title: dict[str, str]) -> tuple[str, bool]:
+    """Devuelve (url de smods, es_exacta).
+
+    Exacta = títulos normalizados idénticos: se confía sin más.
+    Contenida = el título de smods aparece dentro del de Steam (que
+    suele llevar sufijos de versión): hay que verificarla por ID.
+    Sin esto, títulos cortos como "4×1" casan con cualquier cosa.
+    """
+    st = index._norm(steam_title)
+    if not st:
+        return "", False
+    if st in by_title:
+        return by_title[st], True
+    best, found = "", ""
+    for t, url in by_title.items():
+        if len(t) >= 10 and t in st and len(t) > len(best):
+            best, found = t, url
+    return (found, False) if best else ("", False)
+
+
+def _installed_map(game: GameInstall | None) -> dict[str, installer.Installed]:
+    out: dict[str, installer.Installed] = {}
+    if game:
+        for i in installer.list_installed(game):
+            if i.workshop_id:
+                out[i.workshop_id] = i
+    return out
 
 
 def detail(url: str, game: GameInstall | None = None) -> dict[str, Any]:

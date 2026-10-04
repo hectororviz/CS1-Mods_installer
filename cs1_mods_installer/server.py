@@ -137,6 +137,15 @@ def api_search_online(
     return {"query": q, "cards": [c.to_dict() for c in cards], "source": "steam"}
 
 
+@app.get("/api/resolve_steam")
+def api_resolve_steam(wid: str = Query(...)) -> dict[str, Any]:
+    """Pegar enlace del Workshop o ID: abre ficha si hay página indexada."""
+    try:
+        return catalog.resolve_workshop(wid.strip(), game())
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"No se pudo resolver: {e}") from e
+
+
 @app.get("/api/mod")
 def api_mod(url: str = Query(...)) -> dict[str, Any]:
     try:

@@ -171,7 +171,7 @@ class CS1TUI(App):
         yield Header(show_clock=False)
         self.title = title
         with Horizontal(id="bar"):
-            yield Input(placeholder="/ buscar… o pegar enlace smods (Enter)", id="search")
+            yield Input(placeholder="/ buscar… o pegar enlace smods/Steam o ID (Enter)", id="search")
             yield Button("Buscar", id="go_search", variant="primary")
             yield Button("Online [F2]", id="go_online")
             yield Button("Instalados [2]", id="go_inst")
@@ -317,8 +317,32 @@ class CS1TUI(App):
             url = catalog.clean_smods_url(q)
             if url:
                 self.open_url(url)
+                return
+            wid = catalog.clean_steam_ref(q)
+            if wid:
+                self.open_steam_ref(wid)
+                return
+            self.run_search(q)
+
+    @work(thread=True)
+    def open_steam_ref(self, wid: str) -> None:
+        """Pegar enlace/ID del Workshop: abre ficha si hay página indexada."""
+        try:
+            self.call_from_thread(self.set_status, "Resolviendo en Steam…")
+            r = catalog.resolve_workshop(wid, self.game)
+            if r["resolved"] == "smods" and r["card"] and r["card"].get("url"):
+                self.open_url(r["card"]["url"])
+            elif r["resolved"] == "steam" and r["card"]:
+                self.call_from_thread(
+                    self.set_status,
+                    f"«{r['card'].get('title', wid)}» aún no indexado: amplía el índice.",
+                )
             else:
-                self.run_search(q)
+                self.call_from_thread(
+                    self.set_status, "Ese ID no existe en el Workshop."
+                )
+        except Exception as e:  # noqa: BLE001
+            self.call_from_thread(self.set_status, f"No se pudo resolver: {e}")
 
     @work(thread=True)
     def open_url(self, url: str) -> None:
@@ -359,8 +383,12 @@ class CS1TUI(App):
                 url = catalog.clean_smods_url(q)
                 if url:
                     self.open_url(url)
-                else:
-                    self.run_search(q)
+                    return
+                wid = catalog.clean_steam_ref(q)
+                if wid:
+                    self.open_steam_ref(wid)
+                    return
+                self.run_search(q)
         elif event.button.id == "go_online":
             q = self.query_one("#search", Input).value.strip()
             if q:

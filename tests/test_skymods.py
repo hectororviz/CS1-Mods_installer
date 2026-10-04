@@ -335,6 +335,66 @@ class TestPegarEnlace(unittest.TestCase):
         self.assertEqual(catalog.clean_smods_url(""), "")
 
 
+class TestRefSteam(unittest.TestCase):
+    def test_detecta_enlace_e_id(self) -> None:
+        from cs1_mods_installer import catalog
+
+        self.assertEqual(
+            catalog.clean_steam_ref(
+                "https://steamcommunity.com/sharedfiles/filedetails/?id=1637663252"
+            ),
+            "1637663252",
+        )
+        self.assertEqual(
+            catalog.clean_steam_ref(
+                "https://steamcommunity.com/workshop/filedetails/?id=1637663252"
+            ),
+            "1637663252",
+        )
+        self.assertEqual(catalog.clean_steam_ref("1637663252"), "1637663252")
+        self.assertEqual(catalog.clean_steam_ref("traffic manager"), "")
+        self.assertEqual(catalog.clean_steam_ref("123"), "")
+
+    def test_resuelve_a_smods_verificado(self) -> None:
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from cs1_mods_installer import catalog
+
+        info = SimpleNamespace(
+            title="Move It!",
+            kind="mod",
+            file_size=0,
+            preview_url="",
+            compat="",
+            tags=[],
+        )
+        fake_idx = index.Index(
+            entries=[{"url": "https://smods.ru/archives/9", "title": "Move It!"}],
+            pages=1,
+            built_at="",
+        )
+        with (
+            mock.patch.object(
+                catalog.steam, "fetch", return_value={"289964054": info}
+            ),
+            mock.patch.object(catalog.index, "load", return_value=fake_idx),
+        ):
+            r = catalog.resolve_workshop("289964054", None)
+        self.assertEqual(r["resolved"], "smods")
+        self.assertEqual(r["card"]["url"], "https://smods.ru/archives/9")
+
+    def test_id_inexistente(self) -> None:
+        from unittest import mock
+
+        from cs1_mods_installer import catalog
+
+        with mock.patch.object(catalog.steam, "fetch", return_value={}):
+            r = catalog.resolve_workshop("1000000000", None)
+        self.assertEqual(r["resolved"], "unknown")
+        self.assertIsNone(r["card"])
+
+
 class TestBusquedaSteam(unittest.TestCase):
     """Parseo de la página de resultados del Workshop (HTML sintético)."""
 
