@@ -11,3 +11,7 @@ dist/
 .cache/
 .config/
 *.log
+
+# Claves y empaquetados de la extensión (privados, no se suben)
+*.pem
+*.crx
