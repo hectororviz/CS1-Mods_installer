@@ -138,10 +138,14 @@ def build(
         smods.ROBOTS.load(client)
 
     def one(p: int) -> tuple[int, list | str]:
-        try:
-            return p, smods.catalog_page(p, client)
-        except Exception as e:  # red, robots, cambio de maquetacion...
-            return p, f"{type(e).__name__}: {e}"
+        last = "desconocido"
+        for _ in range(3):
+            try:
+                return p, smods.catalog_page(p, client)
+            except Exception as e:  # red, corte transitorio, cambio de maquetacion...
+                last = f"{type(e).__name__}: {e}"
+                time.sleep(5)
+        return p, last
 
     added = 0
     end = min(from_page + pages, MAX_PAGES + 1)
