@@ -125,6 +125,18 @@ def api_search(q: str = Query(..., min_length=1), limit: int = 40) -> dict[str, 
     return {"query": q, "cards": [c.to_dict() for c in cards], "searched": len(idx)}
 
 
+@app.get("/api/search_online")
+def api_search_online(
+    q: str = Query(..., min_length=1), limit: int = 30
+) -> dict[str, Any]:
+    """Búsqueda online en el Workshop cruzada con el índice local."""
+    try:
+        cards = catalog.search_online(q, game(), limit=limit)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"Búsqueda online fallida: {e}") from e
+    return {"query": q, "cards": [c.to_dict() for c in cards], "source": "steam"}
+
+
 @app.get("/api/mod")
 def api_mod(url: str = Query(...)) -> dict[str, Any]:
     try:

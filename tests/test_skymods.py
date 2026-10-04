@@ -315,5 +315,109 @@ class TestIndice(unittest.TestCase):
         self.assertEqual(index.search(self.idx, ""), [])
 
 
+class TestPegarEnlace(unittest.TestCase):
+    def test_detecta_url(self) -> None:
+        from cs1_mods_installer import catalog
+
+        self.assertEqual(
+            catalog.clean_smods_url("https://smods.ru/archives/52274"),
+            "https://smods.ru/archives/52274",
+        )
+        self.assertEqual(
+            catalog.clean_smods_url("miralo smods.ru/archives/52274 que bueno"),
+            "https://smods.ru/archives/52274",
+        )
+
+    def test_texto_normal_no_es_url(self) -> None:
+        from cs1_mods_installer import catalog
+
+        self.assertEqual(catalog.clean_smods_url("traffic manager"), "")
+        self.assertEqual(catalog.clean_smods_url(""), "")
+
+
+class TestBusquedaSteam(unittest.TestCase):
+    """Parseo de la página de resultados del Workshop (HTML sintético)."""
+
+    HTML = """
+    <div class="workshopItem"><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=1637663252"><img src="x"></a>
+    <div class="x"><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=1637663252">TM:PE 11.9.4.1 STABLE (Traffic Manager: President Edition)</a></div></div>
+    <div class="workshopItem"><div class="x"><a href="https://steamcommunity.com/sharedfiles/filedetails/?id=999">Move It!</a></div></div>
+    """
+
+    def test_extrae_ids_y_titulos(self) -> None:
+        found = steam.RE_WORKSHOP_RESULT.findall(self.HTML)
+        by_id = {wid: title for wid, title in found}
+        self.assertEqual(
+            by_id["1637663252"],
+            "TM:PE 11.9.4.1 STABLE (Traffic Manager: President Edition)",
+        )
+        self.assertEqual(by_id["999"], "Move It!")
+
+    def test_enlace_imagen_no_duplica(self) -> None:
+        # el <a> de la imagen no tiene texto: no debe salir como resultado
+        found = steam.RE_WORKSHOP_RESULT.findall(self.HTML)
+        self.assertEqual(len(found), 2)
+
+
+class TestCruceOnline(unittest.TestCase):
+    """search_online cruza Steam con el índice: con y sin página en smods."""
+
+    def test_match_por_titulo_con_sufijo_de_version(self) -> None:
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from cs1_mods_installer import catalog
+
+        fake_steam = [
+            {
+                "workshop_id": "1637663252",
+                "title": "TM:PE 11.9.4.1 STABLE (Traffic Manager: President Edition)",
+                "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=1637663252",
+            },
+            {
+                "workshop_id": "999",
+                "title": "Move It!",
+                "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=999",
+            },
+            {
+                "workshop_id": "555",
+                "title": "Parking 4×1 Deluxe",
+                "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=555",
+            },
+        ]
+        fake_idx = index.Index(
+            entries=[
+                {
+                    "url": "https://smods.ru/archives/1",
+                    "title": "Traffic Manager: President Edition",
+                },
+                {"url": "https://smods.ru/archives/2", "title": "4×1"},
+            ],
+            pages=1,
+            built_at="",
+        )
+        fake_details = {
+            "https://smods.ru/archives/1": SimpleNamespace(workshop_id="1637663252"),
+            "https://smods.ru/archives/2": SimpleNamespace(workshop_id="777"),
+        }
+        with (
+            mock.patch.object(catalog.steam, "search_workshop", return_value=fake_steam),
+            mock.patch.object(catalog.steam, "fetch", return_value={}),
+            mock.patch.object(catalog.index, "load", return_value=fake_idx),
+            mock.patch.object(
+                catalog, "fetch_details", return_value=fake_details
+            ),
+        ):
+            cards = catalog.search_online("traffic manager", None)
+        by_id = {c.workshop_id: c for c in cards}
+        # el título de smods está contenido en el de Steam y el ID coincide
+        self.assertEqual(by_id["1637663252"].url, "https://smods.ru/archives/1")
+        # Move It no está indexado: url vacía pero conserva el enlace Steam
+        self.assertEqual(by_id["999"].url, "")
+        self.assertTrue(by_id["999"].steam_url.endswith("id=999"))
+        # "4×1" casa por subcadena pero el ID no coincide: no se enlaza
+        self.assertEqual(by_id["555"].url, "")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

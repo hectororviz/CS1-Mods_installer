@@ -65,6 +65,7 @@ function banner(msg, kind = '') {
 
 function badges(c) {
   const out = [];
+  if (!c.url && c.steam_url) out.push(`<span class="tag steam">solo en Steam</span>`);
   if (c.compat_status === 'ok') out.push(`<span class="tag ok">✔ ${esc(c.compat)}</span>`);
   else if (c.compat_status === 'mismatch') out.push(`<span class="tag warn">⚠ es para ${esc(c.compat)}</span>`);
   if (c.installed) out.push(`<span class="tag installed">${c.enabled ? 'instalado' : 'desactivado'}</span>`);
@@ -98,8 +99,9 @@ function renderGrid() {
       ? `<span class="kind ${esc(c.kind)}">${esc(c.kind)}</span>`
       : '';
     const badgesHtml = badges(c);
+    const steamOnly = !c.url && c.steam_url;
     return `
-    <article class="card" data-url="${esc(c.url)}" data-i="${i}">
+    <article class="card${steamOnly ? ' steam-only' : ''}" data-url="${esc(c.url)}" data-steam="${esc(c.steam_url || '')}" data-i="${i}">
       <div class="thumb">
         ${img}
         ${kindBadge}
@@ -116,7 +118,13 @@ function renderGrid() {
   }).join('');
 
   $$('.card', grid).forEach((el) =>
-    el.addEventListener('click', () => openModal(el.dataset.url)));
+    el.addEventListener('click', () => {
+      if (el.dataset.url) { openModal(el.dataset.url); return; }
+      if (el.dataset.steam) {
+        window.open(el.dataset.steam, '_blank', 'noopener');
+        banner('Ese mod aún no está en tu índice local: amplía el índice (pestaña Índice) para poder instalarlo desde aquí.', '');
+      }
+    }));
 }
 
 async function loadBrowse(page = 1) {
@@ -132,6 +140,50 @@ async function loadBrowse(page = 1) {
   } catch (e) {
     $('#grid').innerHTML = `<div class="empty">No se pudo cargar el catálogo.<br><small>${esc(e.message)}</small></div>`;
     banner(`Error leyendo smods.ru: ${esc(e.message)}`, 'err');
+  }
+}
+
+async function doSearch(q) {
+  $('#qClear').hidden = !q;
+  $('#qSteam').hidden = !q;
+  try {
+    const d = await api(`/api/search?q=${encodeURIComponent(q)}`);
+    S.cards = d.cards;
+    S.page = 1;
+    $('#pageInfo').textContent = `${d.cards.length} resultado(s) de ${d.searched} indexados`;
+    $('#prev').disabled = $('#next').disabled = true;
+    renderGrid();
+    await enrichPartial();
+    if (d.cards.length === 0) {
+      banner(`Sin resultados en tu índice local. Pulsa <b>Steam 🌐</b> para buscar online.`, '');
+    } else {
+      banner(`Búsqueda local sobre ${d.searched} mods indexados. ¿No está? Pulsa <b>Steam 🌐</b>.`, '');
+    }
+  } catch (e) {
+    $('#grid').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    if (e.message.includes('índice')) banner(
+      `${esc(e.message)} <button id="goIdx">Ir al índice</button>`, 'err');
+    $('#goIdx')?.addEventListener('click', () => switchView('index'));
+  }
+}
+
+async function doSearchOnline(q) {
+  $('#qClear').hidden = !q;
+  $('#qSteam').hidden = !q;
+  $('#grid').innerHTML = Array.from({ length: 6 }, () =>
+    '<div class="skeleton" style="aspect-ratio:3/4"></div>').join('');
+  try {
+    const d = await api(`/api/search_online?q=${encodeURIComponent(q)}&limit=30`);
+    S.cards = d.cards;
+    S.page = 1;
+    const ok = d.cards.filter((c) => c.url).length;
+    const only = d.cards.length - ok;
+    $('#pageInfo').textContent = `${d.cards.length} resultado(s) de Steam`;
+    $('#prev').disabled = $('#next').disabled = true;
+    renderGrid();
+    banner(`${ok} con descarga en smods · ${only} solo en Steam (amplía el índice para descargarlos).`, '');
+  } catch (e) {
+    $('#grid').innerHTML = `<div class="empty">No se pudo buscar en Steam.<br><small>${esc(e.message)}</small></div>`;
   }
 }
 
@@ -446,14 +498,23 @@ $('#q').addEventListener('input', (e) => {
   const v = e.target.value.trim();
   if (!v) {
     $('#qClear').hidden = true;
+    $('#qSteam').hidden = true;
     $('#pageInfo').textContent = `página ${S.page}`;
     $('#prev').disabled = $('#next').disabled = false;
     return loadBrowse(S.page);
   }
-  searchTimer = setTimeout(() => doSearch(v), 420);
+  searchTimer = setTimeout(() => {
+    const m = v.match(/(?:https?:\/\/)?smods\.ru\/archives\/(\d+)/);
+    if (m) { openModal(`https://smods.ru/archives/${m[1]}`); return; }
+    doSearch(v);
+  }, 420);
 });
 $('#qClear').addEventListener('click', () => {
   $('#q').value = ''; $('#q').focus(); $('#q').dispatchEvent(new Event('input'));
+});
+$('#qSteam').addEventListener('click', () => {
+  const v = $('#q').value.trim();
+  if (v) doSearchOnline(v);
 });
 
 $('#modalClose').addEventListener('click', closeModal);

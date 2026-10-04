@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -119,8 +120,15 @@ def build(
     start: int = 1,
     progress: ProgressCb | None = None,
     resume: bool = True,
+    workers: int = 4,
 ) -> Index:
-    """Lee paginas de listado y guarda el indice. Se puede reanudar."""
+    """Lee paginas de listado y guarda el indice. Se puede reanudar.
+
+    Las paginas se piden en lotes de ``workers`` en paralelo (smods ya
+    tolera ese nivel: el detalle de fichas usa 6 hilos) pero se guardan
+    en orden, asi ``pages`` siempre marca hasta donde el indice esta
+    completo y retomar sigue funcionando.
+    """
     idx = load() if resume else Index([], 0, "")
     from_page = start if not resume else idx.pages + 1
     seen = {e["url"] for e in idx.entries}
@@ -129,34 +137,49 @@ def build(
     if not smods.ROBOTS.loaded:
         smods.ROBOTS.load(client)
 
+    def one(p: int) -> tuple[int, list | str]:
+        try:
+            return p, smods.catalog_page(p, client)
+        except Exception as e:  # red, robots, cambio de maquetacion...
+            return p, f"{type(e).__name__}: {e}"
+
     added = 0
+    end = min(from_page + pages, MAX_PAGES + 1)
+    width = max(1, workers)
     try:
-        for p in range(from_page, from_page + pages):
-            if p > MAX_PAGES:
-                idx.complete = True
-                break
-            try:
-                cat = smods.catalog_page(p, client)
-            except Exception as e:  # red, robots, cambio de maquetacion...
+        with ThreadPoolExecutor(max_workers=width) as pool:
+            p = from_page
+            while p < end:
+                batch = list(range(p, min(p + width, end)))
+                got = dict(zip(batch, pool.map(one, batch)))
+                stop = False
+                for bp in batch:
+                    res = got[bp]
+                    if isinstance(res, str):
+                        if progress:
+                            progress(bp, f"pagina {bp}: {res}, parando")
+                        stop = True
+                        break
+                    if not res:
+                        if progress:
+                            progress(bp, "fin del catalogo")
+                        idx.complete = True
+                        stop = True
+                        break
+                    for e in res:
+                        if e.url not in seen:
+                            seen.add(e.url)
+                            idx.entries.append({"url": e.url, "title": e.title})
+                            added += 1
+                    idx.pages = bp
+                    idx.built_at = time.strftime("%Y-%m-%dT%H:%M:%S")
+                save(idx)
                 if progress:
-                    progress(p, f"pagina {p}: {type(e).__name__}, parando")
-                break
-            if not cat:
-                if progress:
-                    progress(p, "fin del catalogo")
-                idx.complete = True
-                break
-            for e in cat:
-                if e.url not in seen:
-                    seen.add(e.url)
-                    idx.entries.append({"url": e.url, "title": e.title})
-                    added += 1
-            idx.pages = p
-            idx.built_at = time.strftime("%Y-%m-%dT%H:%M:%S")
-            if progress:
-                progress(p, f"{len(idx.entries)} mods (+{added})")
-            smods.polite(0.35)  # cortesia: no martilleamos el sitio
-            save(idx)
+                    progress(idx.pages, f"{len(idx.entries)} mods (+{added})")
+                if stop:
+                    break
+                p = batch[-1] + 1
+                smods.polite(0.35)  # cortesia entre lotes
     finally:
         client.close()
 

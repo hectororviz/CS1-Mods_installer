@@ -15,13 +15,14 @@ aqui, solo lee metadata.
 
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 
-from .config import STEAM_API, USER_AGENT
+from .config import STEAM_API, STEAM_APPID, USER_AGENT
 
 # --- clasificacion por tags ------------------------------------------------
 #
@@ -229,3 +230,64 @@ def compat_status(info: SteamInfo | None, game_version: str) -> str:
     if not info or not info.compat or not game_version:
         return "unknown"
     return "ok" if info.compat == game_version else "mismatch"
+
+
+# --- busqueda online en el Workshop --------------------------------------
+#
+# El buscador de smods.ru esta vetado por su robots.txt, pero el del Workshop
+# de Steam no: ``steamcommunity.com/robots.txt`` solo prohibe /actions/,
+# /linkfilter/, /tradeoffer/, /trade/ y /email/. La pagina de resultados se
+# puede leer anonimamente y da titulos + IDs exactos. La descarga sigue
+# haciendose desde los mirrors (smods/modsbase): de Steam solo sale metadata.
+
+RE_WORKSHOP_RESULT = re.compile(r"filedetails/\?id=(\d+)\">([^<]{2,200})<")
+
+
+def search_workshop(
+    query: str, appid: str = STEAM_APPID, limit: int = 30
+) -> list[dict[str, str]]:
+    """Busca en el Workshop y devuelve [{workshop_id, title, url}].
+
+    Solo metadata, sin auth. Si Steam no responde, devuelve lista vacia.
+    """
+    q = query.strip()
+    if not q:
+        return []
+    try:
+        with httpx.Client(
+            timeout=30.0,
+            follow_redirects=True,
+            headers={"User-Agent": USER_AGENT, "Accept-Language": "en,es;q=0.8"},
+        ) as client:
+            r = client.get(
+                "https://steamcommunity.com/workshop/browse/",
+                params={
+                    "appid": appid,
+                    "searchtext": q,
+                    "browsesort": "textsearch",
+                    "section": "readytouseitems",
+                },
+            )
+            r.raise_for_status()
+            page = r.text
+    except httpx.HTTPError:
+        return []
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for wid, title in RE_WORKSHOP_RESULT.findall(page):
+        if wid in seen:
+            continue
+        seen.add(wid)
+        title = html.unescape(title).strip()
+        if not title:
+            continue
+        out.append(
+            {
+                "workshop_id": wid,
+                "title": title,
+                "url": f"https://steamcommunity.com/sharedfiles/filedetails/?id={wid}",
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out

@@ -69,6 +69,7 @@ body { min-height: 100vh; }
 }
 .searchbox input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(74,168,255,.15); }
 .searchbox .ghost { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
+.searchbox .ghost.steam { right: 42px; font-size: 12px; }
 
 .tabs { display: flex; gap: 4px; }
 .tab {
@@ -216,6 +217,9 @@ main { padding: 20px 22px 60px; }
 .tag.warn { color: var(--warn); border-color: #5a4a16; background: #262010; }
 .tag.info { color: var(--accent); border-color: #1e4266; background: #0f1e2e; }
 .tag.installed { color: var(--accent-2); border-color: #1f5a50; background: #0f2622; }
+.tag.steam { color: #9db8d8; border-color: #33465e; background: #141d29; }
+.card.steam-only { border-style: dashed; }
+.card.steam-only:hover { border-color: #33465e; }
 
 .pager { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 30px; color: var(--fg-dim); font-size: 13px; }
 

@@ -33,7 +33,12 @@ from .jobs import REGISTRY
 
 def _short(card: dict[str, Any]) -> tuple[str, str, str, str, str]:
     """Fila de la tabla a partir de un dict de tarjeta."""
-    mark = "✓ " if card.get("installed") else ("…" if card.get("partial") else "")
+    if card.get("installed"):
+        mark = "✓ "
+    elif not card.get("url") and card.get("steam_url"):
+        mark = "○ "
+    else:
+        mark = "…" if card.get("partial") else ""
     title = f"{mark}{card.get('title', '¿?')}"
     if len(title) > 52:
         title = title[:51] + "…"
@@ -144,6 +149,7 @@ class CS1TUI(App):
     BINDINGS = [
         Binding("q", "quit", "Salir"),
         Binding("/", "focus_search", "Buscar"),
+        Binding("f2", "search_online", "Online Steam"),
         Binding("1", "view_catalog", "Catálogo"),
         Binding("2", "view_installed", "Instalados"),
         Binding("n", "next_page", "Pág.+"),
@@ -165,8 +171,9 @@ class CS1TUI(App):
         yield Header(show_clock=False)
         self.title = title
         with Horizontal(id="bar"):
-            yield Input(placeholder="/ buscar…  (Enter busca, Esc limpia)", id="search")
+            yield Input(placeholder="/ buscar… o pegar enlace smods (Enter)", id="search")
             yield Button("Buscar", id="go_search", variant="primary")
+            yield Button("Online [F2]", id="go_online")
             yield Button("Instalados [2]", id="go_inst")
         table = DataTable(id="table", cursor_type="row")
         table.add_column("Mod", width=54)
@@ -235,6 +242,20 @@ class CS1TUI(App):
             self.call_from_thread(self.set_status, f"Error buscando: {e}")
 
     @work(thread=True)
+    def run_search_online(self, query: str) -> None:
+        try:
+            self.call_from_thread(self.set_status, f"Buscando «{query}» en Steam…")
+            cards = catalog.search_online(query, self.game, limit=30)
+            self.cards = [c.to_dict() for c in cards]
+            ok = sum(1 for c in self.cards if c.get("url"))
+            self.call_from_thread(
+                self.paint_cards,
+                f"{len(self.cards)} en Steam · {ok} instalables · ○ = solo en Steam",
+            )
+        except Exception as e:  # noqa: BLE001
+            self.call_from_thread(self.set_status, f"Error online: {e}")
+
+    @work(thread=True)
     def load_installed(self) -> None:
         try:
             items = installer.list_installed(self.game) if self.game else []
@@ -251,7 +272,9 @@ class CS1TUI(App):
         table.clear()
         self.by_row = {}
         for c in self.cards:
-            key = c["url"]
+            key = c.get("url") or c.get("steam_url") or c.get("title", "")
+            if key in self.by_row:
+                continue  # misma ficha dos veces: no repetir fila
             table.add_row(*_short(c), key=key)
             self.by_row[key] = c
         if msg:
@@ -291,7 +314,41 @@ class CS1TUI(App):
         q = event.value.strip()
         if q:
             self.mode = "catalog"
-            self.run_search(q)
+            url = catalog.clean_smods_url(q)
+            if url:
+                self.open_url(url)
+            else:
+                self.run_search(q)
+
+    @work(thread=True)
+    def open_url(self, url: str) -> None:
+        """Abre la ficha de un enlace smods pegado, sin pasar por el índice."""
+        try:
+            self.call_from_thread(self.set_status, "Abriendo ficha…")
+            d = catalog.detail(url, self.game)
+            inst = d.get("installed") or {}
+            card = {
+                "url": d.get("url", ""),
+                "title": d.get("title", ""),
+                "kind": d.get("kind", "unknown"),
+                "workshop_id": d.get("workshop_id", ""),
+                "size": d.get("size", 0),
+                "size_text": d.get("size_text", ""),
+                "author": d.get("author", ""),
+                "revision": d.get("revision", ""),
+                "preview_url": d.get("preview_url", ""),
+                "compat": d.get("compat", ""),
+                "compat_status": d.get("compat_status", "unknown"),
+                "tags": d.get("tags", []),
+                "installed": bool(d.get("installed")),
+                "enabled": inst.get("enabled", True),
+                "managed": inst.get("managed", False),
+                "partial": False,
+                "steam_url": "",
+            }
+            self.call_from_thread(self.push_screen, DetailScreen(card, self.game))
+        except Exception as e:  # noqa: BLE001
+            self.call_from_thread(self.set_status, f"No se pudo abrir: {e}")
 
     @on(Button.Pressed)
     def _on_btn(self, event: Button.Pressed) -> None:
@@ -299,7 +356,16 @@ class CS1TUI(App):
             q = self.query_one("#search", Input).value.strip()
             if q:
                 self.mode = "catalog"
-                self.run_search(q)
+                url = catalog.clean_smods_url(q)
+                if url:
+                    self.open_url(url)
+                else:
+                    self.run_search(q)
+        elif event.button.id == "go_online":
+            q = self.query_one("#search", Input).value.strip()
+            if q:
+                self.mode = "catalog"
+                self.run_search_online(q)
         elif event.button.id == "go_inst":
             self.action_view_installed()
 
@@ -310,9 +376,17 @@ class CS1TUI(App):
         if data is None:
             return
         if self.mode == "catalog":
-            self.push_screen(DetailScreen(data, self.game))
+            self.open_card(data)
         else:
             self.toggle_installed(data)
+
+    def open_card(self, data: dict[str, Any]) -> None:
+        if not data.get("url") and data.get("steam_url"):
+            self.set_status(
+                "○ Solo en Steam todavía: amplía el índice (pestaña Índice de la web) para instalarlo."
+            )
+            return
+        self.push_screen(DetailScreen(data, self.game))
 
     @work(thread=True)
     def toggle_installed(self, data: dict[str, Any]) -> None:
@@ -335,6 +409,14 @@ class CS1TUI(App):
 
     def action_focus_search(self) -> None:
         self.query_one("#search", Input).focus()
+
+    def action_search_online(self) -> None:
+        q = self.query_one("#search", Input).value.strip()
+        if q:
+            self.mode = "catalog"
+            self.run_search_online(q)
+        else:
+            self.action_focus_search()
 
     def action_view_catalog(self) -> None:
         self.mode = "catalog"
@@ -368,7 +450,7 @@ class CS1TUI(App):
         if data is None:
             return
         if self.mode == "catalog":
-            self.push_screen(DetailScreen(data, self.game))
+            self.open_card(data)
         else:
             self.toggle_installed(data)
 
