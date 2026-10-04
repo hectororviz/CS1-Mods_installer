@@ -148,36 +148,32 @@ EOF
 
 Esta es la parte que más confunde a la gente, así que va con explicación.
 
-El contenido del juego **no** está en `Cities_Data/`, sino en **`Files/`**:
+`<instalacion>/Files/` es **solo el contenido de fábrica** (`HardMode`, `UnlimitedMoney`...). Los mods de usuario **no van ahí**: el juego los lee del perfil del jugador. Lo confirma el propio `output_log.txt`, que carga `userGameState.cgs` desde `C:\users\...\AppData\Local\Colossal Order\Cities_Skylines`.
 
 ```
-~/Games/Heroic/CitiesSkylines/        ← raíz de la instalación
-├── launcher-settings.json           ← se lee aquí la versión
-├── Cities_Data/                     ← ejecutable y datos, NO los mods
-└── Files/                           ← aquí va todo el contenido
-    ├── Mods/                        ← mods de código (DLL)
-    │   ├── HardMode/
-    │   └── 3810565217 Quay Tools/
-    ├── Addons/
-    │   ├── Assets/                  ← edificios, props (.crp)
-    │   ├── Styles/
-    │   └── MapThemes/
-    ├── Maps/
-    └── Scenarios/
+~/Games/Heroic/CitiesSkylines/                  ← instalación (NO tocar)
+└── Files/Mods/                                 ← solo fábrica (HardMode...)
+
+~/Games/Heroic/Prefixes/pfx/drive_c/users/steamuser/AppData/Local/
+└── Colossal Order/Cities_Skylines/              ← AQUÍ van tus mods
+    └── Addons/
+        ├── Mods/                               ← mods de código (.dll)
+        │   └── 3810565217 Quay Tools/
+        ├── Assets/                             ← edificios, props (.crp)
+        ├── Styles/
+        └── MapThemes/
 ```
 
-Se deduce de los literales del propio juego: en `ColossalManaged.dll` conviven
-`Files`, `Addons`, `MapThemes`, `Styles`, `Assets`, `Mods` y las líneas de log
-`"Addons path: "` / `"Mods path: "`.
+En Linux nativo es `~/.local/share/Colossal Order/Cities_Skylines/` con la misma estructura `Addons/...`.
 
 **CS1 Mods Installer decide el destino mirando el contenido del `.zip`**, no por el tag de
 Steam:
 
 | Contenido | Destino |
 |---|---|
-| `.dll` | `Files/Mods/<id> <Nombre>/` |
-| `.crp` | `Files/Addons/Assets/<id> <Nombre>/` |
-| `.style.xml` | `Files/Addons/Styles/<id> <Nombre>/` |
+| `.dll` | `Addons/Mods/<id> <Nombre>/` |
+| `.crp` | `Addons/Assets/<id> <Nombre>/` |
+| `.style.xml` | `Addons/Styles/<id> <Nombre>/` |
 
 Gana el contenido: si un mod trae DLL y además assets, va a `Mods/`, porque lo
 que el juego carga de verdad es la DLL. Si el tag de Steam y el archivo no

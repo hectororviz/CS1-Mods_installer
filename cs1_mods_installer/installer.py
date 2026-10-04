@@ -473,8 +473,15 @@ def list_installed(game: GameInstall) -> list[Installed]:
     out: list[Installed] = []
     seen: set[str] = set()
 
-    for rel, kind in SCAN_DIRS:
-        root = game.content_root / rel
+    scan_roots: list[tuple[Path, str]] = [
+        (game.mods_dir, "mod"),
+        (game.assets_dir, "asset"),
+        (game.styles_dir, "style"),
+        (game.map_themes_dir, "theme"),
+        (game.maps_dir, "map"),
+        (game.scenarios_dir, "scenario"),
+    ]
+    for root, kind in scan_roots:
         if not root.is_dir():
             continue
         for entry in sorted(root.iterdir()):

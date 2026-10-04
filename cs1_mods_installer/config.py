@@ -98,7 +98,8 @@ class GameInstall:
     """Instalacion de Cities: Skylines detectada en disco."""
 
     install_dir: Path
-    content_root: Path  # <instalacion>/Files
+    content_root: Path  # <instalacion>/Files (contenido de fabrica, solo referencia)
+    user_dir: Path | None = None  # .../Colossal Order/Cities_Skylines (donde el juego lee los mods)
     version: str = ""  # p.ej. 1.21.1-f9
     app_id: str = ""  # p.ej. cities_v2 en el launcher
     launcher: str = ""  # epic / steam / desconocido
@@ -106,36 +107,60 @@ class GameInstall:
     warnings: list[str] = field(default_factory=list)
 
     # --- rutas de destino -------------------------------------------------
+    # OJO: los mods de usuario NO van en <instalacion>/Files/Mods (ahi solo
+    # viven los mods de fabrica: HardMode, UnlimitedMoney...). El juego los
+    # lee de %LOCALAPPDATA%/Colossal Order/Cities_Skylines/Addons/Mods,
+    # que bajo Heroic/Wine es <...>/Prefixes/pfx/drive_c/users/.../AppData/...
+    # y en Linux nativo ~/.local/share/Colossal Order/Cities_Skylines.
+    def _user(self) -> Path:
+        if self.user_dir is not None:
+            return self.user_dir
+        # Compatibilidad con tests viejos: antes se usaba Files/ directo.
+        return self.content_root
+
     @property
     def mods_dir(self) -> Path:
         """Mods de codigo (DLL)."""
+        if self.user_dir is not None:
+            return self.user_dir / "Addons" / "Mods"
         return self.content_root / "Mods"
 
     @property
     def assets_dir(self) -> Path:
         """Assets (.crp): edificios, props, redes."""
+        if self.user_dir is not None:
+            return self.user_dir / "Addons" / "Assets"
         return self.content_root / "Addons" / "Assets"
 
     @property
     def styles_dir(self) -> Path:
+        if self.user_dir is not None:
+            return self.user_dir / "Addons" / "Styles"
         return self.content_root / "Addons" / "Styles"
 
     @property
     def map_themes_dir(self) -> Path:
+        if self.user_dir is not None:
+            return self.user_dir / "Addons" / "MapThemes"
         return self.content_root / "Addons" / "MapThemes"
 
     @property
     def maps_dir(self) -> Path:
+        if self.user_dir is not None:
+            return self.user_dir / "Maps"
         return self.content_root / "Maps"
 
     @property
     def scenarios_dir(self) -> Path:
+        if self.user_dir is not None:
+            return self.user_dir / "Scenarios"
         return self.content_root / "Scenarios"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "install_dir": str(self.install_dir),
             "content_root": str(self.content_root),
+            "user_dir": str(self.user_dir) if self.user_dir else "",
             "version": self.version,
             "app_id": self.app_id,
             "launcher": self.launcher,
@@ -184,13 +209,73 @@ def _candidate_dirs() -> list[Path]:
     return out
 
 
+def _find_user_dir(install_dir: Path) -> tuple[Path, list[str]]:
+    """Localiza .../Colossal Order/Cities_Skylines donde el juego lee los mods.
+
+    Devuelve (ruta, avisos). En Windows es %LOCALAPPDATA%/Colossal Order/...;
+    bajo Heroic/Wine cuelga del prefijo, y en Linux nativo de ~/.local/share.
+    """
+    home = Path.home()
+    warnings: list[str] = []
+    candidates: list[Path] = []
+
+    # 1. Prefijo Wine junto a la instalacion: <Games/Heroic>/Prefixes/pfx/...
+    for base in (install_dir.parent / "Prefixes", home / "Games" / "Heroic" / "Prefixes"):
+        for user in ("steamuser", "steam", os.environ.get("USER", "")):
+            if not user:
+                continue
+            for pfx in (base / "pfx", base / "shared" / "pfx"):
+                candidates.append(
+                    pfx / "drive_c" / "users" / user / "AppData" / "Local"
+                    / "Colossal Order" / "Cities_Skylines"
+                )
+    # 2. Cualquier otro usuario dentro de esos prefijos (por si el nombre cambia)
+    for base in (install_dir.parent / "Prefixes", home / "Games" / "Heroic" / "Prefixes"):
+        for pfx in (base / "pfx", base / "shared" / "pfx"):
+            users_dir = pfx / "drive_c" / "users"
+            if users_dir.is_dir():
+                for u in sorted(users_dir.iterdir()):
+                    if u.is_dir() and u.name not in ("Public",):
+                        candidates.append(
+                            u / "AppData" / "Local" / "Colossal Order" / "Cities_Skylines"
+                        )
+    # 3. Wine generico
+    candidates.append(
+        home / ".wine" / "drive_c" / "users" / os.environ.get("USER", "steamuser")
+        / "AppData" / "Local" / "Colossal Order" / "Cities_Skylines"
+    )
+    # 4. Linux nativo (Steam)
+    candidates.append(home / ".local" / "share" / "Colossal Order" / "Cities_Skylines")
+
+    seen: set[str] = set()
+    for c in candidates:
+        key = str(c).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if c.is_dir():
+            return c, warnings
+    # Ninguno existe: devolvemos el nativo para crearlo, avisando.
+    fallback = home / ".local" / "share" / "Colossal Order" / "Cities_Skylines"
+    # Si hay instalacion Heroic pero sin user_dir, preferir el prefijo esperado.
+    heroic_pref = home / "Games" / "Heroic" / "Prefixes" / "pfx" / "drive_c" / "users" / "steamuser" / "AppData" / "Local" / "Colossal Order" / "Cities_Skylines"
+    if "Heroic" in str(install_dir) and not fallback.is_dir():
+        warnings.append(
+            f"No se encontro el perfil del juego; se usara {heroic_pref}. "
+            "Arranca el juego una vez para que cree la carpeta."
+        )
+        return heroic_pref, warnings
+    return fallback, warnings
+
+
 def detect_game(override: str | None = None) -> GameInstall | None:
     """Encuentra la instalacion de Cities: Skylines y sus rutas de contenido.
 
-    La raiz de contenido es ``<instalacion>/Files`` y no ``Cities_Data``: lo
-    confirmamos leyendo el heap de strings de ``ColossalManaged.dll``, donde
-    ``Files``, ``Addons``, ``MapThemes``, ``Styles``, ``Assets`` y ``Mods``
-    aparecen junto a las lineas de log ``"Addons path: "`` / ``"Mods path: "``.
+    ``<instalacion>/Files`` es solo el contenido de fabrica (HardMode,
+    UnlimitedMoney...). Los mods de usuario van en el perfil del jugador
+    (``Addons/Mods``, ``Addons/Assets``...): lo confirma el propio
+    ``output_log.txt``, que carga ``userGameState.cgs`` desde
+    ``C:\\users\\...\\AppData\\Local\\Colossal Order\\Cities_Skylines``.
     """
     settings = load_settings()
     if override:
@@ -231,9 +316,13 @@ def detect_game(override: str | None = None) -> GameInstall | None:
         if not version:
             warnings.append("No se pudo leer la version del juego de launcher-settings.json.")
 
+        user_dir, user_warnings = _find_user_dir(d)
+        warnings.extend(user_warnings)
+
         return GameInstall(
             install_dir=d,
             content_root=content,
+            user_dir=user_dir,
             version=version,
             app_id=app_id,
             launcher=launcher,
