@@ -324,7 +324,7 @@ class TestExtension(unittest.TestCase):
         self.assertEqual(m["manifest_version"], 3)
         self.assertIn("https://smods.ru/archives/*", m["content_scripts"][0]["matches"])
         self.assertIn("http://127.0.0.1/*", m["host_permissions"])
-        for f in ["content.js", "icons/icon16.png", "icons/icon48.png", "icons/icon128.png"]:
+        for f in ["content.js", "popup.html", "popup.js", "icons/icon16.png", "icons/icon48.png", "icons/icon128.png"]:
             self.assertTrue((ext / f).is_file(), f)
 
 

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 260px; margin: 0; padding: 12px; font: 13px/1.4 system-ui, sans-serif; color: #eee; background: #1c2128; }
+  h1 { font-size: 14px; margin: 0 0 8px; }
+  #status { opacity: .8; margin-bottom: 10px; }
+  button { width: 100%; margin: 4px 0; padding: 9px; border: 0; border-radius: 8px; cursor: pointer; font-weight: 600; }
+  #open { background: #1f7a4d; color: #fff; }
+  #open:hover { background: #249058; }
+  #idx { background: #33465e; color: #fff; }
+  #idx:hover { background: #3f5878; }
+  button:disabled { opacity: .5; cursor: wait; }
+  #msg { margin-top: 8px; font-size: 12px; opacity: .85; }
+</style>
+</head>
+<body>
+  <h1>🏙️ CS1 Mods Installer</h1>
+  <div id="status">Buscando backend…</div>
+  <button id="open">Abrir gestor</button>
+  <button id="idx">Ampliar índice (+100 págs.)</button>
+  <div id="msg"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

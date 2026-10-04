@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CS1 Mods Installer · mods de Cities: Skylines</title>
+<title>CS1 Mods Installer · mods instalados</title>
 <link rel="stylesheet" href="/static/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏙️</text></svg>">
 </head>
@@ -19,50 +19,20 @@
   </div>
 
   <div class="searchbox">
-    <input id="q" type="search" placeholder="Buscar… o pegar enlace smods/Steam o ID" autocomplete="off" spellcheck="false">
-    <button id="qSteam" class="ghost steam" title="Buscar online en Steam" hidden>Steam 🌐</button>
-    <button id="qClear" class="ghost" title="Limpiar búsqueda" hidden>✕</button>
+    <input id="url" type="text" placeholder="Pegar enlace smods/Steam o ID y Enter…" autocomplete="off" spellcheck="false">
+    <button id="urlGo" class="ghost" title="Abrir ficha">Abrir</button>
   </div>
 
   <nav class="tabs" role="tablist">
-    <button class="tab is-active" data-view="browse" role="tab">Catálogo</button>
-    <button class="tab" data-view="installed" role="tab">Instalados <span class="pill" id="cntInstalled">0</span></button>
-    <button class="tab" data-view="index" role="tab">Índice</button>
+    <button class="tab is-active" data-view="installed" role="tab">Instalados <span class="pill" id="cntInstalled">0</span></button>
   </nav>
 </header>
 
 <div id="banner" class="banner" hidden></div>
 
 <main>
-  <!-- ── catálogo ───────────────────────────────────────────── -->
-  <section id="view-browse" class="view is-active">
-    <div class="toolbar">
-      <div class="filters">
-        <button class="chip is-active" data-kind="">Todo</button>
-        <button class="chip" data-kind="mod">Mods</button>
-        <button class="chip" data-kind="asset">Assets</button>
-        <button class="chip" data-kind="map">Mapas</button>
-        <button class="chip" data-kind="theme">Temas</button>
-        <button class="chip" data-kind="scenario">Escenarios</button>
-        <button class="chip" data-kind="savegame">Guías</button>
-      </div>
-      <div class="filters">
-        <label class="check"><input type="checkbox" id="fHideInstalled"> <span>ocultar instalados</span></label>
-        <label class="check"><input type="checkbox" id="fOnlyCompat"> <span>solo compatible con mi versión</span></label>
-      </div>
-    </div>
-
-    <div id="grid" class="grid"></div>
-
-    <nav class="pager">
-      <button id="prev" class="ghost">← Anterior</button>
-      <span id="pageInfo">página 1</span>
-      <button id="next">Siguiente →</button>
-    </nav>
-  </section>
-
-  <!-- ── instalados ─────────────────────────────────────────── -->
-  <section id="view-installed" class="view">
+  <!-- ── instalados: la web solo administra lo instalado ────────── -->
+  <section id="view-installed" class="view is-active">
     <div class="toolbar">
       <div class="filters">
         <button class="chip is-active" data-ifilter="">Todo</button>
@@ -73,32 +43,6 @@
       <p class="muted" id="installedPaths"></p>
     </div>
     <div id="instList" class="list"></div>
-  </section>
-
-  <!-- ── índice ─────────────────────────────────────────────── -->
-  <section id="view-index" class="view">
-    <div class="panel">
-      <h2>Índice local de búsqueda</h2>
-      <p class="muted">
-        El buscador de smods.ru (<code>/?s=</code>) está prohibido por su
-        <code>robots.txt</code>. En vez de saltarnos la regla, CS1 Mods Installer construye
-        un índice propio con las páginas de listado, que sí están permitidas.
-      </p>
-      <p>
-        Estado: <strong id="idxStats">—</strong>
-      </p>
-      <div class="row">
-        <label>Páginas a leer (10 mods por página)
-          <input id="idxPages" type="number" min="1" max="2000" value="100">
-        </label>
-        <button id="idxBuild">Construir / continuar índice</button>
-      </div>
-      <p class="muted small">
-        El catálogo completo son unas 8.900 páginas (~89.000 mods). Empieza con
-        100 y ve ampliando: se reanuda donde se quedó.
-      </p>
-      <div id="idxProgress" class="progress" hidden><div class="bar"></div><span></span></div>
-    </div>
   </section>
 </main>
 

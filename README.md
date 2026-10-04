@@ -53,8 +53,11 @@ python3 -m venv .venv
 skymods
 ```
 
-Eso es todo. Detecta el juego, levanta el servidor en `127.0.0.1:8787` y abre tu
-navegador. Para pararlo, `Ctrl+C`.
+Eso es todo. Detecta el juego y levanta el servidor en `127.0.0.1:8787`. Para pararlo, `Ctrl+C`.
+
+> Si lo abres desde el menú de aplicaciones, arranca en silencio (sin abrir el
+> navegador): el icono del menú lleva `--no-browser`. Abre el gestor con el
+> popup de la extensión o en `http://127.0.0.1:8787`.
 
 Opciones:
 
@@ -64,16 +67,24 @@ skymods --port 9000                              # otro puerto
 skymods --no-browser                            # no abrir el navegador
 ```
 
-## Extensión de Chrome (instalar desde smods.ru)
+## Extensión de Chrome (descubrir e instalar desde smods.ru)
 
-En `extension/` hay una extensión sin publicar (Manifest V3) que pone un botón
-verde **«⬇ Instalar en CS1»** en cada ficha de smods.ru. Al pulsarlo manda la
-URL al backend local y muestra el progreso en el propio botón.
+El flujo principal es la extensión: navegas smods.ru con normalidad e instalas
+con un clic. La web solo administra lo ya instalado.
+
+En `extension/` hay una extensión sin publicar (Manifest V3):
+
+- **Botón flotante** en cada ficha de smods.ru: **«⬇ Instalar en CS1»**, con
+  progreso en el propio botón.
+- **Popup** (clic en el icono): estado del backend, cuántos mods hay
+  instalados/indexados, botón **Abrir gestor** y botón **Ampliar índice**.
 
 1. Abre `chrome://extensions`, activa el **modo desarrollador**.
 2. **Cargar descomprimida** → elige la carpeta `extension/` de este repo.
 3. Abre CS1 Mods Installer (el backend tiene que estar corriendo).
 4. Entra en cualquier ficha, p. ej. `https://smods.ru/archives/52274`, y pulsa el botón.
+
+Tras instalar o cambiar la extensión, recárgala en `chrome://extensions` (↻).
 
 Notas: la extensión solo habla con `127.0.0.1` (puertos 8787–8796, se
 autodetecta); no necesita la Chrome Web Store porque se carga sin empaquetar.

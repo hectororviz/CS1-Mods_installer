@@ -104,10 +104,14 @@ const onlyAfterDownload = installKinds.filter((k) => !cardKinds.includes(k));
 const chipKinds = uniq([...html.matchAll(/data-kind="([^"]*)"/g)].map((m) => m[1]));
 
 console.log(`\nkinds visibles antes de descargar: ${cardKinds.join(', ')}`);
-console.log(`chips de filtro: ${chipKinds.map((k) => k || '(todo)').join(', ')}`);
-const noChip = cardKinds.filter((k) => !chipKinds.includes(k));
-if (noChip.length) fail(`kinds que la web no puede filtrar: ${noChip.join(', ')}`);
-else ok('cada kind filtrable tiene su chip');
+console.log(`chips de filtro: ${chipKinds.map((k) => k || '(todo)').join(', ') || '(ninguno)'}`);
+if (!chipKinds.length) {
+  ok('sin chips de catálogo: la web solo administra instalados');
+} else {
+  const noChip = cardKinds.filter((k) => !chipKinds.includes(k));
+  if (noChip.length) fail(`kinds que la web no puede filtrar: ${noChip.join(', ')}`);
+  else ok('cada kind filtrable tiene su chip');
+}
 if (onlyAfterDownload.length) {
   console.log(
     `  · ${onlyAfterDownload.join(', ')}: solo se detecta al extraer el zip, por eso no hay chip`
