@@ -93,12 +93,16 @@ function renderGrid() {
     const img = c.preview_url && c.workshop_id
       ? `<img loading="lazy" src="/api/image/${c.workshop_id}" alt="${esc(c.title)}"
             onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'noimg',textContent:'📦'}))">`
-      : `<div class="noimg">📦</div>`;
+      : `<div class="thumb-placeholder skeleton"></div>`;
+    const kindBadge = c.kind && c.kind !== 'unknown'
+      ? `<span class="kind ${esc(c.kind)}">${esc(c.kind)}</span>`
+      : '';
+    const badgesHtml = badges(c);
     return `
     <article class="card" data-url="${esc(c.url)}" data-i="${i}">
       <div class="thumb">
         ${img}
-        <span class="kind ${esc(c.kind)}">${esc(c.kind)}</span>
+        ${kindBadge}
       </div>
       <div class="body">
         <div class="name">${esc(c.title)}</div>
@@ -106,7 +110,7 @@ function renderGrid() {
           <span>${humanSize(c.size || 0)}</span>
           ${c.author ? `<span>· ${esc(c.author)}</span>` : ''}
         </div>
-        <div class="tags">${badges(c)}</div>
+        <div class="tags">${badgesHtml}</div>
       </div>
     </article>`;
   }).join('');
@@ -124,27 +128,30 @@ async function loadBrowse(page = 1) {
     const d = await api(`/api/browse?page=${page}`);
     S.cards = d.cards;
     renderGrid();
+    await enrichPartial();
   } catch (e) {
     $('#grid').innerHTML = `<div class="empty">No se pudo cargar el catálogo.<br><small>${esc(e.message)}</small></div>`;
     banner(`Error leyendo smods.ru: ${esc(e.message)}`, 'err');
   }
 }
 
-async function doSearch(q) {
-  $('#qClear').hidden = !q;
+async function enrichPartial() {
+  const partial = S.cards.filter((c) => c.partial);
+  if (partial.length === 0) return;
+  const urls = partial.map((c) => c.url);
   try {
-    const d = await api(`/api/search?q=${encodeURIComponent(q)}`);
-    S.cards = d.cards;
-    S.page = 1;
-    $('#pageInfo').textContent = `${d.cards.length} resultado(s) de ${d.searched} indexados`;
-    $('#prev').disabled = $('#next').disabled = true;
+    const d = await api('/api/enrich', { method: 'POST', body: { urls } });
+    const byUrl = new Map(d.cards.map((x) => [x.url, x]));
+    for (let i = 0; i < S.cards.length; i++) {
+      const c = S.cards[i];
+      if (byUrl.has(c.url)) {
+        S.cards[i] = byUrl.get(c.url);
+      }
+    }
     renderGrid();
-    banner(`Búsqueda local sobre ${d.searched} mods indexados.`, '');
   } catch (e) {
-    $('#grid').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
-    if (e.message.includes('índice')) banner(
-      `${esc(e.message)} <button id="goIdx">Ir al índice</button>`, 'err');
-    $('#goIdx')?.addEventListener('click', () => switchView('index'));
+    // fallar silenciosamente; el modal pide /api/mod si hace falta
+    console.error('enrich falló', e);
   }
 }
 

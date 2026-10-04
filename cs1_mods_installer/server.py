@@ -135,6 +135,20 @@ def api_mod(url: str = Query(...)) -> dict[str, Any]:
         raise HTTPException(502, f"No se pudo leer la ficha: {e}") from e
 
 
+@app.post("/api/enrich")
+def api_enrich(req: dict[str, Any] | None = None) -> dict[str, Any]:
+    urls = []
+    if isinstance(req, dict):
+        urls = req.get("urls") or []
+    if not isinstance(urls, list):
+        urls = []
+    try:
+        cards = catalog.enrich_batch(urls, game())
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"No se pudo enriquecer: {e}") from e
+    return {"cards": [c.to_dict() for c in cards]}
+
+
 @app.get("/api/installed")
 def api_installed() -> dict[str, Any]:
     g = require_game()

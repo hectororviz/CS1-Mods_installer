@@ -6,22 +6,69 @@ al usuario y como se decide el destino de un mod.
 
 from __future__ import annotations
 
+import json
+import os
 import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any
 
 from . import images, index, installer, modsbase, smods, steam
-from .config import GameInstall
+from .config import GameInstall, cache_dir
 from .jobs import Job
 
 # Cache de fichas en memoria: abrir la pagina 1 y volver a ella no debe
 # volver a pedir 10 HTML a smods.
 _detail_cache: dict[str, smods.ModDetail] = {}
 _detail_lock = threading.Lock()
+
+
+# --- caché persistente de fichas ------------------------------------------------
+
+def _load_details_disk() -> dict[str, tuple[float, dict]]:
+    try:
+        if not DETAILS_PATH.is_file():
+            return {}
+        data = json.loads(DETAILS_PATH.read_text('utf-8'))
+        out: dict[str, tuple[float, dict]] = {}
+        now = time.time()
+        for url, v in data.items():
+            if not isinstance(v, dict) or 'ts' not in v or 'data' not in v:
+                continue
+            ts = float(v['ts'])
+            if ts < now - DETAIL_TTL:
+                continue
+            out[url] = (ts, v['data'])
+        # purgar si crece demasiado
+        if len(out) > DETAIL_MAX_ENTRIES:
+            items = sorted(out.items(), key=lambda x: x[1][0])
+            out = dict(items[-DETAIL_MAX_ENTRIES:])
+        return out
+    except (OSError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _save_detail_disk(url: str, detail: smods.ModDetail) -> None:
+    try:
+        cache = _load_details_disk()
+        cache[url] = (time.time(), asdict(detail))
+        if len(cache) > DETAIL_MAX_ENTRIES:
+            items = sorted(cache.items(), key=lambda x: x[1][0])
+            cache = dict(items[-DETAIL_MAX_ENTRIES:])
+        DETAILS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp = DETAILS_PATH.with_suffix('.tmp')
+        tmp.write_text(json.dumps(cache, ensure_ascii=False), 'utf-8')
+        tmp.replace(DETAILS_PATH)
+    except (OSError, ValueError):
+        pass
+# Cache persistente de fichas en disco (por URL), con TTL
+DETAILS_PATH = cache_dir() / "details.json"
+DETAIL_TTL_DAYS = 14
+DETAIL_TTL = DETAIL_TTL_DAYS * 24 * 3600
+DETAIL_MAX_ENTRIES = 2000
 
 # Cache de las paginas de listado, con caducidad.
 _page_cache: dict[int, tuple[float, list[dict[str, str]]]] = {}
@@ -54,6 +101,7 @@ class Card:
     installed: bool = False
     enabled: bool = True
     managed: bool = False
+    partial: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return self.__dict__.copy()
@@ -62,11 +110,20 @@ class Card:
 def get_detail(url: str, client: smods.httpx.Client | None = None) -> smods.ModDetail:
     with _detail_lock:
         hit = _detail_cache.get(url)
-    if hit:
-        return hit
+        if hit:
+            return hit
+    # buscar en disco
+    disk = _load_details_disk()
+    cached = disk.get(url)
+    if cached:
+        d = smods.ModDetail(**cached[1])
+        with _detail_lock:
+            _detail_cache[url] = d
+        return d
     d = smods.mod_detail(url, client)
     with _detail_lock:
         _detail_cache[url] = d
+    _save_detail_disk(url, d)
     return d
 
 
@@ -116,26 +173,55 @@ def fetch_details(
     return out
 
 
-def enrich(
+def cards_partial(
     entries: list[dict[str, str]], game: GameInstall | None
 ) -> list[Card]:
-    """Convierte entradas del indice en tarjetas con metadata de Steam."""
     if not entries:
         return []
-
-    details = fetch_details([e["url"] for e in entries])
-    ids = [d.workshop_id for d in details.values() if d.workshop_id]
-    meta = steam.fetch(ids) if ids else {}
-
     installed_map: dict[str, installer.Installed] = {}
     if game:
         for i in installer.list_installed(game):
             if i.workshop_id:
                 installed_map[i.workshop_id] = i
-
     cards: list[Card] = []
     for e in entries:
-        d = details.get(e["url"])
+        cards.append(
+            Card(
+                url=e["url"],
+                title=e.get("title", ""),
+                kind="unknown",
+                workshop_id="",
+                size=0,
+                size_text="",
+                author="",
+                revision="",
+                preview_url="",
+                compat="",
+                compat_status="unknown",
+                tags=[],
+                installed=False,
+                enabled=True,
+                managed=False,
+                partial=True,
+            )
+        )
+    return cards
+
+
+def enrich_batch(urls: list[str], game: GameInstall | None) -> list[Card]:
+    if not urls:
+        return []
+    details = fetch_details(urls)
+    ids = [d.workshop_id for d in details.values() if d.workshop_id]
+    meta = steam.fetch(ids) if ids else {}
+    installed_map: dict[str, installer.Installed] = {}
+    if game:
+        for i in installer.list_installed(game):
+            if i.workshop_id:
+                installed_map[i.workshop_id] = i
+    cards: list[Card] = []
+    for url in urls:
+        d = details.get(url)
         if d is None:
             continue
         info = meta.get(d.workshop_id)
@@ -143,8 +229,8 @@ def enrich(
         kind = info.kind if info and info.kind != "unknown" else "unknown"
         cards.append(
             Card(
-                url=e["url"],
-                title=d.title or e.get("title", ""),
+                url=url,
+                title=d.title or url,
                 kind=kind,
                 workshop_id=d.workshop_id,
                 size=info.file_size if info else 0,
@@ -158,6 +244,7 @@ def enrich(
                 installed=inst is not None,
                 enabled=inst.enabled if inst else True,
                 managed=inst.managed if inst else False,
+                partial=False,
             )
         )
     return cards
@@ -180,7 +267,7 @@ def catalog_entries(page: int = 1) -> list[dict[str, str]]:
 
 
 def browse(page: int = 1, game: GameInstall | None = None) -> list[Card]:
-    return enrich(catalog_entries(page), game)
+    return cards_partial(catalog_entries(page), game)
 
 
 def search(
@@ -188,7 +275,7 @@ def search(
 ) -> list[Card]:
     idx = index.load()
     hits = index.search(idx, query, limit=limit)
-    return enrich(hits, game)
+    return cards_partial(hits, game)
 
 
 def detail(url: str, game: GameInstall | None = None) -> dict[str, Any]:

@@ -145,6 +145,8 @@ def make_client(timeout: float = 30.0) -> httpx.Client:
     return httpx.Client(
         timeout=timeout,
         follow_redirects=True,
+        http2=True,
+        limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         headers={"User-Agent": USER_AGENT, "Accept-Language": "en,es;q=0.8"},
     )
 
