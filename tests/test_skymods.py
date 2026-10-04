@@ -315,6 +315,19 @@ class TestIndice(unittest.TestCase):
         self.assertEqual(index.search(self.idx, ""), [])
 
 
+class TestExtension(unittest.TestCase):
+    """La extensión de Chrome: manifiesto válido y ficheros presentes."""
+
+    def test_manifiesto(self) -> None:
+        ext = Path(__file__).resolve().parent.parent / "extension"
+        m = json.loads((ext / "manifest.json").read_text("utf-8"))
+        self.assertEqual(m["manifest_version"], 3)
+        self.assertIn("https://smods.ru/archives/*", m["content_scripts"][0]["matches"])
+        self.assertIn("http://127.0.0.1/*", m["host_permissions"])
+        for f in ["content.js", "icons/icon16.png", "icons/icon48.png", "icons/icon128.png"]:
+            self.assertTrue((ext / f).is_file(), f)
+
+
 class TestPegarEnlace(unittest.TestCase):
     def test_detecta_url(self) -> None:
         from cs1_mods_installer import catalog

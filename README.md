@@ -64,6 +64,21 @@ skymods --port 9000                              # otro puerto
 skymods --no-browser                            # no abrir el navegador
 ```
 
+## Extensión de Chrome (instalar desde smods.ru)
+
+En `extension/` hay una extensión sin publicar (Manifest V3) que pone un botón
+verde **«⬇ Instalar en CS1»** en cada ficha de smods.ru. Al pulsarlo manda la
+URL al backend local y muestra el progreso en el propio botón.
+
+1. Abre `chrome://extensions`, activa el **modo desarrollador**.
+2. **Cargar descomprimida** → elige la carpeta `extension/` de este repo.
+3. Abre CS1 Mods Installer (el backend tiene que estar corriendo).
+4. Entra en cualquier ficha, p. ej. `https://smods.ru/archives/52274`, y pulsa el botón.
+
+Notas: la extensión solo habla con `127.0.0.1` (puertos 8787–8796, se
+autodetecta); no necesita la Chrome Web Store porque se carga sin empaquetar.
+No roba nada de Steam: reutiliza tu backend, que descarga de los mirrors.
+
 Para dejarlo a un clic, crea un acceso en tu menú de aplicaciones:
 
 ```bash

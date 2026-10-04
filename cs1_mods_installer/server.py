@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -21,6 +22,16 @@ from .jobs import REGISTRY
 WEB_DIR = Path(__file__).parent / "web"
 
 app = FastAPI(title="CS1 Mods Installer", docs_url=None, redoc_url=None)
+
+# La extensión de Chrome llama desde https://smods.ru al backend local.
+# Sigue siendo solo-local (127.0.0.1): cualquiera en tu máquina ya puede
+# llamar igual sin CORS; esto solo deja que el navegador lo haga.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 _game: GameInstall | None = None
 
