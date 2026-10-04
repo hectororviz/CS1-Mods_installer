@@ -53,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--game-dir", default=None, help="carpeta de Cities: Skylines")
     p.add_argument("--no-browser", action="store_true", help="no abrir el navegador")
     p.add_argument("--no-serve", action="store_true", help="solo mostrar como quedo todo y salir")
+    p.add_argument("--tui", action="store_true", help="interfaz de terminal (rápida, sin navegador)")
     return p
 
 
@@ -79,6 +80,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  ! {w}")
 
     if args.no_serve:
+        return 0
+
+    if args.tui:
+        from .tui import main as tui_main
+
+        print(f"\n  {APP_TITLE} en modo terminal (q para salir).\n")
+        tui_main()
         return 0
 
     from .server import app  # se importa tarde para no cargar todo al imprimir

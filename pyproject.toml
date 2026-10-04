@@ -8,13 +8,15 @@ license = { text = "MIT" }
 dependencies = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.27",
-    "httpx>=0.27",
+    "httpx[http2]>=0.27",
     "pillow>=10.0",
+    "textual>=8.0",
 ]
 
 [project.scripts]
 cs1-mods-installer = "cs1_mods_installer.__main__:main"
 cs1mods = "cs1_mods_installer.__main__:main"
+cs1-mods-tui = "cs1_mods_installer.tui:main"
 
 [build-system]
 requires = ["hatchling"]
