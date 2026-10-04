@@ -151,7 +151,7 @@ def build(
             p = from_page
             while p < end:
                 batch = list(range(p, min(p + width, end)))
-                got = dict(zip(batch, pool.map(one, batch)))
+                got = dict(pool.map(one, batch))
                 stop = False
                 for bp in batch:
                     res = got[bp]
