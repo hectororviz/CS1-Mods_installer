@@ -66,9 +66,12 @@ def load() -> Index:
 
 
 def save(idx: Index) -> None:
+    import os
+
     p = index_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
+    # tmp único por proceso: dos builds a la vez no deben pisarse
+    tmp = p.with_name(f"{p.name}.tmp-{os.getpid()}")
     tmp.write_text(json.dumps(idx.to_dict(), ensure_ascii=False), "utf-8")
     tmp.replace(p)
 
